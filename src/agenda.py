@@ -670,27 +670,29 @@ def show_create_event_form():
                     mensagem.toast("Criando evento...", duration="short")
                     time.sleep(1)
 
+                    # ----------------  E-MAIL TEMPORARIAMENTE DESATIVADO!!!! -----------------------
                     # Enviar e-mail aos participantes antes da confirmação de sucesso
-                    try:
-                        equipe_nomes = st.session_state.get("custom_equipe", [])
-                        motorista_nome = st.session_state.get("custom_motorista")
-                        df_usuarios_local = st.session_state.get("df_usuarios")
-                        send_ok = send_event_email_for_event(
-                            event_data=event_data,
-                            equipe_nomes=equipe_nomes or [],
-                            motorista=motorista_nome,
-                            df_usuarios=df_usuarios_local,
-                            created_event=created_event,
-                        )
-                        if send_ok:
-                            mensagem.toast("📧 E-mail enviado aos participantes.", duration="short")
-                            print(f"[EMAIL] E-mail enviado aos participantes.")
-                        else:
-                            mensagem.toast("⚠️ Não foi possível enviar e-mail aos participantes.", duration="short")
-                            print(f"[EMAIL] Não foi possível enviar e-mail aos participantes.")
-                    except Exception as e:
-                        mensagem.toast(f"⚠️ Erro ao enviar e-mail: {e}", duration="short")
-                        print(f"[EMAIL] Erro ao enviar e-mail: {e}")
+                    # try:
+                    #     equipe_nomes = st.session_state.get("custom_equipe", [])
+                    #     motorista_nome = st.session_state.get("custom_motorista")
+                    #     df_usuarios_local = st.session_state.get("df_usuarios")
+                    #     send_ok = send_event_email_for_event(
+                    #         event_data=event_data,
+                    #         equipe_nomes=equipe_nomes or [],
+                    #         motorista=motorista_nome,
+                    #         df_usuarios=df_usuarios_local,
+                    #         created_event=created_event,
+                    #     )
+                    #     if send_ok:
+                    #         mensagem.toast("📧 E-mail enviado aos participantes.", duration="short")
+                    #         print(f"[EMAIL] E-mail enviado aos participantes.")
+                    #     else:
+                    #         mensagem.toast("⚠️ Não foi possível enviar e-mail aos participantes.", duration="short")
+                    #         print(f"[EMAIL] Não foi possível enviar e-mail aos participantes.")
+                    # except Exception as e:
+                    #     mensagem.toast(f"⚠️ Erro ao enviar e-mail: {e}", duration="short")
+                    #     print(f"[EMAIL] Erro ao enviar e-mail: {e}")
+                    # ----------------  E-MAIL TEMPORARIAMENTE DESATIVADO!!!! -----------------------
                     
                     st.session_state.google_calendar_loaded = False
                     if 'calendar_events' in st.session_state:
@@ -810,4 +812,4 @@ def func_agenda_rav():
     if st.session_state.get('show_create_event', False):
         show_create_event_form()
     
-    return calendar_component
+    return calendar_component   
