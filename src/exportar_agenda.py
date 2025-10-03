@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from src.google_agenda import get_calendar_events
 from src.google_sheets import get_dados_usuarios
 from src.agenda import COLOR_MAPPING
+from utils.utils import titulos_pagina
 
 # ==================== UTILITÁRIOS ====================
 
@@ -307,7 +308,7 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
 
 def render_export_view():
     """Renderiza UI para exportar a agenda do mês em PDF (horizontal)."""
-    st.subheader("Exportar agenda do mês (PDF)")
+    titulos_pagina("Exportar agenda do mês (PDF)", font_size="2.0em")
 
     # Seleção do mês/ano
     col1, col2 = st.columns([2, 1])
