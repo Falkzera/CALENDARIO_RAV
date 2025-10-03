@@ -74,6 +74,14 @@ def _format_event_details(e: Dict) -> Dict[str, str]:
     date_fmt = fmt_date_safe(start_val if isinstance(start_val, str) else None) or "—"
     date_end_fmt = fmt_date_safe(end_val if isinstance(end_val, str) else None) or ""
 
+    # Seleção de cor: seguir legenda por substring no título; fallback para azul padrão
+    title_lower = (e.get("title", "") or "").lower()
+    color = "#3064ad"
+    for key, val in COLOR_MAPPING.items():
+        if key in title_lower:
+            color = val
+            break
+
     return {
         "title": e.get("title", "—"),
         "date": date_fmt,
@@ -83,7 +91,7 @@ def _format_event_details(e: Dict) -> Dict[str, str]:
         "location": ext.get("location", "—") or "—",
         "attendees": ", ".join([a for a in ext.get("attendees", []) if a]) or "—",
         "link": ext.get("html_link", ""),
-        "color": COLOR_MAPPING.get(e.get("title", "").lower(), "#3064ad"),
+        "color": color,
     }
 
 
@@ -91,66 +99,6 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
     """Cria HTML estilizado (similar ao e-mail) da agenda mensal, em formato horizontal."""
     logo_b64 = _load_logo_base64()
     month_name = pycalendar.month_name[month].capitalize()
-
-    # Resumo de usuários
-    resumo_usuarios = []
-    try:
-        if df_usuarios is not None and hasattr(df_usuarios, "iterrows"):
-            total_users = len(df_usuarios)
-            resumo_usuarios.append(f"Total de usuários: {total_users}")
-            # Mostrar até 12 usuários (nome e e-mail quando disponível)
-            nomes_col = "NOME"
-            possiveis_cols_email = ["E-MAIL", "EMAIL", "E_mail", "E-mail", "E Mail", "email"]
-            count = 0
-            for _, row in df_usuarios.iterrows():
-                nome = row.get(nomes_col, "—")
-                email = next((str(row[c]).strip() for c in possiveis_cols_email if c in row and str(row[c]).strip()), "—")
-                resumo_usuarios.append(f"• {nome} — {email}")
-                count += 1
-                if count >= 12:
-                    break
-        else:
-            resumo_usuarios.append("Dados de usuários indisponíveis.")
-    except Exception:
-        resumo_usuarios.append("Falha ao carregar resumo de usuários.")
-
-    # Resumo da Equipe: apenas usuários que estão em algum evento
-    resumo_equipe = []
-    try:
-        # Extrai participantes exclusivamente do bloco "👥 Equipe:" na descrição dos eventos
-        participantes_set = set()
-        for e in events:
-            ext = e.get("extendedProps", {})
-            desc = e.get("description") or ext.get("description") or ""
-            for nome in _extract_participants_from_description(desc):
-                nome_norm = _normalize_name(nome)
-                if nome_norm:
-                    participantes_set.add(nome_norm)
-
-        # Cruzar com df_usuarios para exibir nomes oficiais; priorizar correspondência por nome
-        if df_usuarios is not None and hasattr(df_usuarios, "iterrows"):
-            nomes_col = "NOME"
-            equipe_list = []
-            for _, row in df_usuarios.iterrows():
-                nome = str(row.get(nomes_col, "")).strip()
-                nome_norm = _normalize_name(nome) if nome else ""
-                if nome_norm and nome_norm in participantes_set:
-                    equipe_list.append(f"• {nome or '—'}")
-            if equipe_list:
-                resumo_equipe.append(f"Membros com eventos: {len(equipe_list)}")
-                resumo_equipe.extend(equipe_list)
-            else:
-                resumo_equipe.append("Nenhum membro com eventos neste mês.")
-        else:
-            # Sem df_usuarios, mostrar nomes detectados diretamente da descrição
-            if participantes_set:
-                resumo_equipe.append(f"Participantes em eventos: {len(participantes_set)}")
-                for p in sorted(participantes_set):
-                    resumo_equipe.append(f"• {p}")
-            else:
-                resumo_equipe.append("Dados de equipe indisponíveis.")
-    except Exception:
-        resumo_equipe.append("Falha ao carregar resumo da equipe.")
 
     legend_items = []
     for nome, cor in COLOR_MAPPING.items():
@@ -174,7 +122,6 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
                 <p style=\"margin:0 0 6px; font-size:12px; color:#444;\"><strong>Descrição:</strong></p>
                 <div style=\"background:#f9fbff; border:1px solid #e5ecf6; border-radius:8px; padding:10px; font-size:12px; color:#333;\">{d['description']}</div>
             </div>
-            <p style=\"margin:8px 0 0; font-size:12px; color:#444;\"><strong>Participantes:</strong> {d['attendees']}</p>
             <div style=\"margin-top:8px;\">{link_html}</div>
         </div>
         """)
@@ -287,8 +234,6 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
               <h4>Legenda</h4>
               <div class=\"legend\">{''.join(legend_items)}</div>
               <div class=\"users\">
-                <h4>Resumo da Equipe</h4>
-                <div style=\"font-size:12px; color:#555; line-height:1.5;\">{('<br>'.join(resumo_equipe))}</div>
               </div>
             </div>
           </div>
@@ -313,7 +258,10 @@ def render_export_view():
     # Seleção do mês/ano
     col1, col2 = st.columns([2, 1])
     with col1:
-        month = st.selectbox("Mês", options=list(range(1, 13)), format_func=lambda m: pycalendar.month_name[m].capitalize(), index=datetime.now().month - 1)
+        month = st.selectbox("Mês", options=list(range(1, 13)), format_func=lambda m: [
+            "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+            "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+        ][m - 1], index=datetime.now().month - 1)
     with col2:
         year = st.number_input("Ano", min_value=2020, max_value=2100, value=datetime.now().year, step=1)
 
@@ -328,7 +276,7 @@ def render_export_view():
 
     # Pré-visualização (HTML)
     with st.expander("Pré-visualização", expanded=False):
-        st.components.v1.html(html, height=600, scrolling=True)
+        st.components.v1.html(html, height=700, scrolling=True)
 
     # Gerar PDF
     # if st.button("Gerar PDF", type="primary"):

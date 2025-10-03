@@ -13,24 +13,22 @@ df_motorista = get_dados_motorista()
 st.session_state.df_motoristas = df_motorista
 
 COLOR_MAPPING = {
-    'ausências': '#fd7e14',
-    'agenda sala': '#ffc107',
-    'agenda gov': '#3064ad',
-    'férias': '#6f42c1',
-    'agenda prefeitos': '#17a2b8',
-    'aniversariante do dia': '#ffb347',
     'feriado': '#006414',
+    # Campanhas de conscientização
+    'maio laranja': '#fd7e14',      # Maio Laranja – combate ao abuso sexual infantil
+    'junho violeta': '#8b00ff',   # Junho Violeta – combate à violência contra idosos
+    'junho da diversidade': '#ff0000',  # Junho da Diversidade – vermelho (início arco-íris)
+    'agosto lilás': '#c79fef',      # Agosto Lilás – combate à violência doméstica
 }
 
 # Mapeamento para colorId do Google Calendar (aproximações)
 COLOR_ID_MAPPING = {
-    'ausências': '6',            # laranja
-    'agenda sala': '5',          # amarelo
-    'agenda gov': '9',           # azul
-    'férias': '2',               # roxo
-    'agenda prefeitos': '3',     # turquesa
-    'aniversariante do dia': '5',# amarelo
-    'feriado': '10',             # verde
+    'feriado': '10',                # verde
+    # Campanhas de conscientização
+    'maio laranja': '6',            # laranja
+    'junho violeta': '3',           # roxo/violeta (mais próximo disponível)
+    'junho da diversidade': '11',   # vermelho (início arco-íris)
+    'agosto lilás': '1',            # lavanda/lilás (mais próximo disponível)
 }
 
 DEFAULT_COLOR = '#3064ad'
