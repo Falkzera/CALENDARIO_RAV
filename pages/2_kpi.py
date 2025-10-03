@@ -7,13 +7,11 @@ from datetime import datetime, timedelta
 from collections import Counter
 import calendar
 
-# ==================== CONFIGURAÇÕES ====================
-st.set_page_config(
-    page_title="KPIs - Calendário RAV",
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+from utils.utils import padrao_importacao_page
+
+
+
+padrao_importacao_page()
 
 # ==================== CSS CUSTOMIZADO ====================
 st.markdown("""
