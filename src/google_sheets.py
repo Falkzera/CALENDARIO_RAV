@@ -58,7 +58,14 @@ def get_dados_usuarios():
             return read_data('calendario_rav', 'usuarios_rav')
         except Exception as e:
             return st.error(f"Erro ao carregar dados: {e}")
-        
+
+@st.cache_data(show_spinner=False)
+def get_dados_motorista():
+    with st.spinner("Carregando dados..."):
+        try:
+            return read_data('calendario_rav', 'motorista')
+        except Exception as e:
+            return st.error(f"Erro ao carregar dados: {e}")
 
 # @st.cache_data(show_spinner=False)
 def get_historico_acessos():

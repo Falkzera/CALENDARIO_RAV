@@ -58,10 +58,12 @@ if not st.session_state.logged_in:
 if st.session_state.logged_in:
 
     padrao_importacao_page()
-    
-    from src.google_sheets import get_dados_usuarios
+
+    from src.google_sheets import get_dados_usuarios, get_dados_motorista
     df_usuarios = get_dados_usuarios()
     st.session_state.df_usuarios = df_usuarios
+    df_motorista = get_dados_motorista()
+    st.session_state.df_motoristas = df_motorista
 
 
     titulos_pagina("Navegação", font_size="1.9em", text_color="#3064AD", icon='' )

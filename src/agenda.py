@@ -1,15 +1,16 @@
 import time
 import streamlit as st
 from datetime import datetime, timedelta
-from src.google_agenda import (
-    get_calendar_events, create_calendar_event, 
-    update_calendar_event, delete_calendar_event, 
-    normalize_html_description
-)
+from src.google_agenda import get_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, normalize_html_description
 from utils.utils import titulos_pagina
 from streamlit_calendar import calendar
+from src.google_sheets import get_dados_usuarios, get_dados_motorista
+from src.email import send_event_email_for_event
 
-# ==================== CONFIGURAÇÕES E CONSTANTES ====================
+df_usuarios = get_dados_usuarios()
+st.session_state.df_usuarios = df_usuarios
+df_motorista = get_dados_motorista()
+st.session_state.df_motoristas = df_motorista
 
 COLOR_MAPPING = {
     'ausências': '#fd7e14',
@@ -498,231 +499,97 @@ def show_create_event_form():
     """Interface para criação de novos eventos."""
     
     with st.container(border=True):
-        opcoes_evento = st.selectbox("📝 Tipo de Evento*", ["AGENDA SALA", "AUSÊNCIAS" , "PERSONALIZADO"])
+        opcoes_evento = st.selectbox("📝 Tipo de Evento*", ["PERSONALIZADO"])
         
-        if opcoes_evento == "AGENDA SALA":
-            # Configurações fixas para AGENDA SALA
-            title = "AGENDA SALA"
-            location = SALA_LOCATION
-            
-            # ✅ CORREÇÃO 1: Verificar se o usuário selecionou um intervalo de dias
-            start_date = st.session_state.get("selected_date")
-            end_date = st.session_state.get("selected_end_date", start_date)
-            
-            # Converter para objetos date
-            start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-            all_day = False
-            
-            # Horários disponíveis (baseado na data de início)
-            available_times = get_available_times(start_date)
-            
-            if not available_times:
-                st.error("❌ Não é possível agendar eventos para datas passadas!")
-                return
-            
-            # Inicializar horários
-            if 'agenda_start_time_str' not in st.session_state:
-                st.session_state.agenda_start_time_str = available_times[0]
-            if 'agenda_end_time_str' not in st.session_state:
-                start_idx = available_times.index(st.session_state.agenda_start_time_str)
-                end_idx = min(start_idx + 4, len(available_times) - 1)  # 1 hora
-                st.session_state.agenda_end_time_str = available_times[end_idx]
-            
-            # Selectbox de horários
-            col1, col2 = st.columns(2)
-            with col1:
-                start_time_str = st.selectbox(
-                    "🕐 Hora de Início",
-                    options=available_times,
-                    index=available_times.index(st.session_state.agenda_start_time_str),
-                    key="agenda_start_time_select"
-                )
-                if start_time_str != st.session_state.agenda_start_time_str:
-                    st.session_state.agenda_start_time_str = start_time_str
-                    start_idx = available_times.index(start_time_str)
-                    end_idx = min(start_idx + 4, len(available_times) - 1)
-                    st.session_state.agenda_end_time_str = available_times[end_idx]
-                    st.rerun()
-            
-            with col2:
-                start_idx = available_times.index(start_time_str)
-                end_time_options = available_times[start_idx + 1:]
-                
-                if not end_time_options:
-                    st.error("❌ Não há horários de fim disponíveis!")
-                    return
-                
-                if st.session_state.agenda_end_time_str not in end_time_options:
-                    st.session_state.agenda_end_time_str = end_time_options[0]
-                
-                end_time_str = st.selectbox(
-                    "🕐 Hora de Fim",
-                    options=end_time_options,
-                    index=end_time_options.index(st.session_state.agenda_end_time_str),
-                    key="agenda_end_time_select"
-                )
-                if end_time_str != st.session_state.agenda_end_time_str:
-                    st.session_state.agenda_end_time_str = end_time_str
-            
-            # Participantes
-            nomes = sorted([n for n in st.session_state.df_usuarios["NOME"]])
-            participantes = st.multiselect("👥 Quem Vai Participar*", options=nomes, default=None)
-            
-            if participantes:
-                st.write(f"Participantes: {', '.join(participantes)}")
-            
-            # Descrição
-            description_base = st.text_area("📄 Descrição", placeholder="Descrição detalhada do evento")
-            
-            # Adicionar participantes na descrição
-            if participantes:
-                participant_info = f"\n\n📧 Participantes:\n{chr(10).join(['• ' + nome for nome in participantes])}"
-                description = description_base + participant_info
-            else:
-                description = description_base
-        
-        elif opcoes_evento == "AUSÊNCIAS":
+        if opcoes_evento == "PERSONALIZADO":
 
-            title = "AUSÊNCIAS"
-            location = ""
-
-            # Usar a data selecionada no calendário (intervalo suportado)
+            # Datas selecionadas no calendário (necessário para lógica de horários)
             start_date_str = st.session_state.get("selected_date", datetime.now().strftime("%Y-%m-%d"))
             end_date_str = st.session_state.get("selected_end_date", start_date_str)
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
 
-            # Checkbox para ausência de dia inteiro
-            all_day = st.checkbox("🌅 Ausência de dia inteiro", value=True)
+            # 1) Checkbox: Evento de dia inteiro (acima do Nome do Evento)
+            all_day = st.checkbox("🌅 Evento de dia inteiro", value=True)
 
-            # Se não for dia inteiro, permitir seleção de horários
+            # 2) Nome do Evento e Descrição
+            title = st.text_input("🏷️ Nome do Evento*", key="custom_title", placeholder="Ex: Reunião de Planejamento")
+            description_base = st.text_area("📄 Descrição", placeholder="Descreva os detalhes do evento")
+
+            # 3) Widgets de horários (caso não seja dia inteiro)
             if not all_day:
                 available_times = get_available_times(start_date)
                 if not available_times:
-                    st.error("❌ Não é possível registrar ausência para datas passadas!")
+                    st.error("❌ Não é possível selecionar horário para datas passadas!")
                     return
 
                 # Inicializar horários padrão em session_state
-                if 'absence_start_time_str' not in st.session_state:
-                    st.session_state.absence_start_time_str = available_times[0]
-                if 'absence_end_time_str' not in st.session_state:
-                    start_idx = available_times.index(st.session_state.absence_start_time_str)
+                if "custom_start_time_str" not in st.session_state:
+                    st.session_state.custom_start_time_str = available_times[0]
+                if "custom_end_time_str" not in st.session_state:
+                    start_idx = available_times.index(st.session_state.custom_start_time_str)
                     end_idx = min(start_idx + 4, len(available_times) - 1)  # 1 hora padrão
-                    st.session_state.absence_end_time_str = available_times[end_idx]
+                    st.session_state.custom_end_time_str = available_times[end_idx]
 
                 # Selectboxes de horários
                 col1, col2 = st.columns(2)
                 with col1:
                     start_time_str = st.selectbox(
-                        "🕐 Hora de Início da Ausência",
+                        "🕐 Hora de Início",
                         options=available_times,
-                        index=available_times.index(st.session_state.absence_start_time_str),
-                        key="absence_start_time_select"
+                        index=available_times.index(st.session_state.custom_start_time_str),
+                        key="custom_start_time_select"
                     )
-                    if start_time_str != st.session_state.absence_start_time_str:
-                        st.session_state.absence_start_time_str = start_time_str
+                    if start_time_str != st.session_state.custom_start_time_str:
+                        st.session_state.custom_start_time_str = start_time_str
                         start_idx = available_times.index(start_time_str)
                         end_idx = min(start_idx + 4, len(available_times) - 1)
-                        st.session_state.absence_end_time_str = available_times[end_idx]
+                        st.session_state.custom_end_time_str = available_times[end_idx]
                         st.rerun()
 
                 with col2:
-                    start_idx = available_times.index(st.session_state.absence_start_time_str)
+                    start_idx = available_times.index(st.session_state.custom_start_time_str)
                     end_time_options = available_times[start_idx + 1:]
 
                     if not end_time_options:
                         st.error("❌ Não há horários de fim disponíveis!")
                         return
 
-                    if st.session_state.absence_end_time_str not in end_time_options:
-                        st.session_state.absence_end_time_str = end_time_options[0]
+                    if st.session_state.custom_end_time_str not in end_time_options:
+                        st.session_state.custom_end_time_str = end_time_options[0]
 
                     end_time_str = st.selectbox(
-                        "🕐 Hora de Fim da Ausência",
+                        "🕐 Hora de Fim",
                         options=end_time_options,
-                        index=end_time_options.index(st.session_state.absence_end_time_str),
-                        key="absence_end_time_select"
+                        index=end_time_options.index(st.session_state.custom_end_time_str),
+                        key="custom_end_time_select"
                     )
-                    if end_time_str != st.session_state.absence_end_time_str:
-                        st.session_state.absence_end_time_str = end_time_str
-
-            # Campo de descrição para motivo da ausência
-            # Adicionar selectbox para escolher quem estará ausente e compor a descrição
-            nomes = sorted([n for n in st.session_state.df_usuarios["NOME"] if n != "Iásnaia Poliana Lemos Santana"])
-            nomes.insert(0, "Iásnaia Poliana Lemos Santana")
-            participante_ausente = st.selectbox("👤 Quem estará ausente?*", options=nomes, index=None, key="ausencia_participante_select", placeholder="Selecione o servidor ausente")
-
-            motivo_base = st.text_area("📄 Motivo da ausência", placeholder="Descreva o motivo da ausência")
-
-            if participante_ausente:
-                description = f"{motivo_base}\n\n👤 Servidor Ausente:\n• {participante_ausente}"
+                    if end_time_str != st.session_state.custom_end_time_str:
+                        st.session_state.custom_end_time_str = end_time_str
             else:
-                description = motivo_base
+                start_time_str = None
+                end_time_str = None
+
+            # 4) Em colunas: Equipe (coluna 1) e Motorista (coluna 2)
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                equipe_opcoes = sorted(list(st.session_state.df_usuarios["NOME"])) if "df_usuarios" in st.session_state else []
+                equipe_selecionada = st.multiselect("👥 Equipe (participantes)", options=equipe_opcoes, key="custom_equipe", placeholder="Selecione os participantes")
+
+            with col_e2:
+                motoristas_opcoes = [n for n in st.session_state.df_motoristas["NOME"] if str(n).strip()]
+                motorista = st.selectbox("🚗 Motorista", options=motoristas_opcoes if motoristas_opcoes else ["Sem motoristas disponíveis"],index=None, key="custom_motorista", placeholder="Selecione o motorista")
+
+            # 5) Localização
+            location = st.text_input("📍 Localização", value="", placeholder="Endereço ou local do evento")
+
+            # Montar descrição incluindo Equipe e Motorista
+            equipe_str = "\n".join([f"• {n}" for n in equipe_selecionada]) if equipe_selecionada else "—"
+            motorista_str = motorista if motoristas_opcoes else "—"
+            description = (description_base or "").strip()
+            description += "\n\n👥 Equipe:\n" + (equipe_str if equipe_selecionada else "—")
+            description += f"\n\n🚗 Motorista:\n" + (motorista_str if motorista_str else "—")
         
-                    
-        else:  # PERSONALIZADO
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                title = st.text_input("📝 Título do Evento*", placeholder="Digite o título do evento")
-                start_date = st.date_input(
-                    "📅 Data de Início*",
-                    value=datetime.strptime(st.session_state.get('selected_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d').date()
-                )
-                
-                available_start_times = get_available_times(start_date)
-                if not available_start_times:
-                    st.error("❌ Não é possível agendar eventos para datas passadas!")
-                    return
-                
-                if 'custom_start_time_str' not in st.session_state:
-                    st.session_state.custom_start_time_str = available_start_times[0]
-                
-                start_time_str = st.selectbox(
-                    "🕐 Hora de Início",
-                    options=available_start_times,
-                    index=available_start_times.index(st.session_state.custom_start_time_str),
-                    key="custom_start_time_select"
-                )
-                if start_time_str != st.session_state.custom_start_time_str:
-                    st.session_state.custom_start_time_str = start_time_str
-            
-            with col2:
-                location = st.text_input("📍 Local", placeholder="Local do evento")
-                end_date = st.date_input(
-                    "📅 Data de Fim",
-                    value=datetime.strptime(st.session_state.get('selected_end_date', st.session_state.get('selected_date', datetime.now().strftime('%Y-%m-%d'))), '%Y-%m-%d').date()
-                )
-                
-                # Ajuste: para intervalos de dias, manter padrão diário (fim após início)
-                start_idx = available_start_times.index(start_time_str)
-                if start_date == end_date:
-                    end_time_options = available_start_times[start_idx + 1:]
-                else:
-                    end_time_options = available_start_times[start_idx + 1:]
-                
-                if not end_time_options:
-                    st.error("❌ Não há horários de fim disponíveis!")
-                    return
-                
-                if 'custom_end_time_str' not in st.session_state:
-                    st.session_state.custom_end_time_str = end_time_options[0]
-                
-                if st.session_state.custom_end_time_str not in end_time_options:
-                    st.session_state.custom_end_time_str = end_time_options[0]
-                
-                end_time_str = st.selectbox(
-                    "🕐 Hora de Fim",
-                    options=end_time_options,
-                    index=end_time_options.index(st.session_state.custom_end_time_str),
-                    key="custom_end_time_select"
-                )
-                if end_time_str != st.session_state.custom_end_time_str:
-                    st.session_state.custom_end_time_str = end_time_str
-            
-            description = st.text_area("📄 Descrição", placeholder="Descrição detalhada do evento")
-            all_day = st.checkbox("🌅 Evento de dia inteiro")
         
         # Botões de ação
         col_submit, col_cancel = st.columns(2)
@@ -802,6 +669,28 @@ def show_create_event_form():
                     
                     mensagem.toast("Criando evento...", duration="short")
                     time.sleep(1)
+
+                    # Enviar e-mail aos participantes antes da confirmação de sucesso
+                    try:
+                        equipe_nomes = st.session_state.get("custom_equipe", [])
+                        motorista_nome = st.session_state.get("custom_motorista")
+                        df_usuarios_local = st.session_state.get("df_usuarios")
+                        send_ok = send_event_email_for_event(
+                            event_data=event_data,
+                            equipe_nomes=equipe_nomes or [],
+                            motorista=motorista_nome,
+                            df_usuarios=df_usuarios_local,
+                            created_event=created_event,
+                        )
+                        if send_ok:
+                            mensagem.toast("📧 E-mail enviado aos participantes.", duration="short")
+                            print(f"[EMAIL] E-mail enviado aos participantes.")
+                        else:
+                            mensagem.toast("⚠️ Não foi possível enviar e-mail aos participantes.", duration="short")
+                            print(f"[EMAIL] Não foi possível enviar e-mail aos participantes.")
+                    except Exception as e:
+                        mensagem.toast(f"⚠️ Erro ao enviar e-mail: {e}", duration="short")
+                        print(f"[EMAIL] Erro ao enviar e-mail: {e}")
                     
                     st.session_state.google_calendar_loaded = False
                     if 'calendar_events' in st.session_state:
@@ -818,6 +707,8 @@ def show_create_event_form():
                             del st.session_state[key]
 
                     mensagem.toast("✅ Evento Criado com Sucesso!", duration="short")
+
+                    # aqui deverá chamar a função que envia o e-mail.
                     time.sleep(0.5)
                     st.rerun()
                 else:
@@ -856,9 +747,6 @@ def func_agenda_rav():
     if not st.session_state.google_calendar_loaded:
         try:
             with st.status("Carregando eventos do Google Calendar...", expanded=False):
-                api_events = get_calendar_events(months_back=12)
-                if api_events:
-                    st.session_state.calendar_events.extend(api_events)
                 api_events = get_calendar_events(months_back=12)
                 if api_events:
                     st.session_state.calendar_events.extend(api_events)

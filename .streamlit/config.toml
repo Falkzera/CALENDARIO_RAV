@@ -5,3 +5,14 @@ backgroundColor="#f0f2f9"
 
 [client]
 showSidebarNavigation = false
+
+[server]
+maxUploadSize = 200
+enableStaticServing = true
+
+[runner]
+enableMediaFileStorage = true
+
+[mediaFileStorage]
+storageType = "filesystem"
+storagePath = "media"
