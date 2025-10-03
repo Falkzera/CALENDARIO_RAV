@@ -205,10 +205,15 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
     .calendar-row {{ display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; margin-bottom:8px; }}
     .calendar-row.header {{ margin-bottom:12px; }}
     .day-header {{ text-align:center; font-weight:600; font-size:12px; color:#3064ad; padding:6px 0; background:#f1f5fb; border-radius:8px; border:1px solid #e5ecf6; }}
-    .day-cell {{ min-height:90px; background:#f9fbff; border:1px solid #e5ecf6; border-radius:10px; padding:8px; position:relative; }}
+    .day-cell {{ min-height:120px; background:#f9fbff; border:1px solid #d5e2f3; border-radius:12px; padding:28px 10px 10px 10px; position:relative; transition:box-shadow .15s ease, transform .15s ease; }}
+    .day-cell.has-events {{ background:#ffffff; box-shadow:0 2px 10px rgba(48,100,173,0.08); border-color:#c8d8ee; }}
     .day-cell.empty {{ background:transparent; border-color:transparent; }}
     .day-number {{ position:absolute; top:6px; right:8px; font-size:12px; color:#667; }}
-    .event-pill {{ }}
+    .event-pill {{ display:flex; align-items:center; gap:6px; border-left:6px solid var(--event-color, #3064ad); background:#f1f6ff; border:1px solid #dbe7ff; border-radius:8px; padding:6px 8px; margin:6px 0; font-size:12px; color:#222; box-shadow:0 1px 2px rgba(0,0,0,0.04); }}
+    .event-pill:hover {{ transform: translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,0.08); }}
+    .event-dot {{ width:8px; height:8px; border-radius:50%; background: var(--event-color, #3064ad); flex-shrink:0; }}
+    .event-title {{ font-weight:600; }}
+    .event-time {{ background:#e9effd; color:#1f3b7d; border:1px solid #d5e2f3; border-radius:6px; padding:2px 6px; font-size:11px; }}
     </style>
     """
 
@@ -235,7 +240,7 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
         if dt and dt.month == month and dt.year == year:
             day = dt.day
             d = _format_event_details(e)
-            pill = f"<div class=\"event-pill\" style=\"border-left:4px solid {d['color']}; background:#f9fbff; border:1px solid #e5ecf6; border-radius:6px; padding:4px 6px; margin:4px 0; font-size:11px; color:#333;\">{d['title']}{' — ' + d['period'] if d['period'] and d['period'] != 'Dia inteiro' else ''}</div>"
+            pill = f"<div class=\"event-pill\" style=\"--event-color: {d['color']}; border-left:6px solid {d['color']};\"><span class=\"event-dot\"></span><span class=\"event-title\">{d['title']}</span>{('<span class=\"event-time\">' + d['period'] + '</span>') if d['period'] and d['period'] != 'Dia inteiro' else ''}</div>"
             events_by_day.setdefault(day, []).append(pill)
 
     pycalendar.setfirstweekday(pycalendar.SUNDAY)
@@ -249,8 +254,11 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
             if d == 0:
                 cells.append("<div class=\"day-cell empty\"></div>")
             else:
-                day_events = "".join(events_by_day.get(d, []))
-                cells.append(f"<div class=\"day-cell\"><div class=\"day-number\">{d}</div>{day_events}</div>")
+                day_list = events_by_day.get(d, [])
+                day_events = "".join(day_list)
+                count = len(day_list)
+                cell_class = "day-cell has-events" if len(day_list) > 0 else "day-cell"
+                cells.append(f"<div class=\"{cell_class}\"><div class=\"day-number\">{d}</div>{day_events}</div>")
         calendar_rows.append(f"<div class=\"calendar-row\">{''.join(cells)}</div>")
     calendar_html = f"<div class=\"month-calendar\">{''.join(calendar_rows)}</div>"
 
@@ -297,27 +305,6 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
     """
     return html
 
-
-def _convert_html_to_pdf_bytes(html: str) -> Optional[bytes]:
-    """Tenta converter HTML em PDF usando bibliotecas disponíveis (WeasyPrint ou pdfkit)."""
-    # Primeiro: WeasyPrint (preferível, sem binários externos)
-    try:
-        from weasyprint import HTML, CSS  # type: ignore
-        pdf_bytes = HTML(string=html, base_url=".").write_pdf(stylesheets=[])
-        return pdf_bytes
-    except Exception:
-        pass
-
-    # Segundo: pdfkit (requer wkhtmltopdf instalado no sistema)
-    try:
-        import pdfkit  # type: ignore
-        pdf_bytes = pdfkit.from_string(html, False)
-        return pdf_bytes
-    except Exception:
-        pass
-
-    return None
-
 def render_export_view():
     """Renderiza UI para exportar a agenda do mês em PDF (horizontal)."""
     st.subheader("Exportar agenda do mês (PDF)")
@@ -343,22 +330,24 @@ def render_export_view():
         st.components.v1.html(html, height=600, scrolling=True)
 
     # Gerar PDF
-    if st.button("Gerar PDF", type="primary"):
-        pdf_bytes = _convert_html_to_pdf_bytes(html)
-        if pdf_bytes:
-            st.success("PDF gerado com sucesso!")
-            st.download_button(
-                label="Baixar PDF",
-                data=pdf_bytes,
-                file_name=f"agenda_{year}_{month:02d}.pdf",
-                mime="application/pdf",
-            )
-        else:
-            st.warning("Não foi possível converter automaticamente para PDF neste ambiente.")
-            st.download_button(
-                label="Baixar como HTML (imprima em PDF pelo navegador)",
-                data=html,
-                file_name=f"agenda_{year}_{month:02d}.html",
-                mime="text/html",
-            )
-            st.info("Dica: Abra o HTML baixado no navegador e use Imprimir > Salvar como PDF (paisagem).")
+    # if st.button("Gerar PDF", type="primary"):
+    #     pdf_bytes = _convert_html_to_pdf_bytes(html)
+    #     if pdf_bytes:
+    #         st.success("PDF gerado com sucesso!")
+    #         st.download_button(
+    #             label="Baixar PDF",
+    #             data=pdf_bytes,
+    #             file_name=f"agenda_{year}_{month:02d}.pdf",
+    #             mime="application/pdf",
+    #         )
+    #     else:
+            # st.warning("Não foi possível converter automaticamente para PDF neste ambiente.")
+    
+    st.download_button(
+            label="Baixar como HTML ",
+            data=html,
+            file_name=f"agenda_{year}_{month:02d}.html",
+            mime="text/html",
+            type="primary")
+            
+    st.info("Dica: Abra o HTML baixado no navegador e use Imprimir > Salvar como PDF (paisagem).")
