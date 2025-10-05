@@ -34,7 +34,7 @@ def padrao_importacao_page():
         initial_sidebar_state="expanded"
     )
 
-    # imagem_topo()
+    imagem_topo()
     exibir_info_usuario_sidebar()
     menu_navegacao_sidebar()
 
@@ -49,13 +49,17 @@ def menu_navegacao_sidebar():
     1_agenda.py, 2_kpi.py e um botão de SAIR que limpa todo o cache.
     """
 
+    # botão para ir para Home.py
+    if st.sidebar.button("Instruções", key="btn_home", use_container_width=True, type='primary'):
+        st.switch_page("Home.py")
+
     # Botão para página de Agenda
     if st.sidebar.button("Agenda", key="btn_agenda", use_container_width=True, type='primary'):
         st.switch_page("pages/1_agenda.py")
 
     # Botão para página de KPIs
-    if st.sidebar.button("Indicadores", key="btn_kpi", use_container_width=True, type='primary'):
-        st.switch_page("pages/2_kpi.py")
+    if st.sidebar.button("Resumo Mensal", key="btn_exportar", use_container_width=True, type='primary'):
+        st.switch_page("pages/2_exportar.py")
 
     st.sidebar.markdown("---")
 
@@ -210,8 +214,8 @@ def rodape_desenvolvedor():
     st.write("---")
     st.markdown("""
         <div style='text-align: center; color: #666; padding: 20px;'>
-            <p>🏛️ <strong>SIREGOV - Sistema de Governança</strong></p>
-            <p>Desenvolvido para otimizar a gestão governamental</p>
+            <p>🏛️ <strong>RAV - Rede de Atenção às Violências</strong></p>
+            <p>Sistema de Gerenciamento das Ações</p>
         </div>
         """,
         unsafe_allow_html=True

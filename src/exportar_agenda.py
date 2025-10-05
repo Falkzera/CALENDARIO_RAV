@@ -216,14 +216,14 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
     <head>
       <meta charset=\"utf-8\" />
       <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-      <title>Agenda do mês - {month_name}/{year}</title>
+      <title>Agenda do mês - {pycalendar.month_name[month].capitalize()} {year}</title>
       {css}
     </head>
     <body>
       <div class=\"wrapper\">
         <div class=\"card\">
           <div class=\"header\">
-            <div style=\"display:flex; align-items:center; gap:12px;\">{logo_html}<h2 class=\"title\">Agenda do mês — {month_name} / {year}</h2></div>
+            <div style=\"display:flex; align-items:center; gap:12px;\">{logo_html}<h2 class=\"title\">Agenda do mês — {pycalendar.month_name[month].capitalize()} / {year}</h2></div>
             <p class=\"date\">Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
           </div>
           <div class=\"content\">
@@ -242,7 +242,7 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
             {calendar_html}
           </div>
           <div class=\"footer\">
-            <p style=\"margin:0;\">Documento gerado automaticamente a partir do Google Calendar.</p>
+            <p style=\"margin:0;\">Documento gerado automaticamente a partir da distribuição da Agenda.</p>
           </div>
         </div>
       </div>
@@ -253,7 +253,7 @@ def _build_month_html(events: List[Dict], month: int, year: int, df_usuarios) ->
 
 def render_export_view():
     """Renderiza UI para exportar a agenda do mês em PDF (horizontal)."""
-    titulos_pagina("Exportar agenda do mês (PDF)", font_size="2.0em")
+    titulos_pagina("Resumo Mensal de Eventos", font_size="2.0em")
 
     # Seleção do mês/ano
     col1, col2 = st.columns([2, 1])
@@ -275,8 +275,8 @@ def render_export_view():
     html = _build_month_html(eventos_mes, month, year, df_usuarios)
 
     # Pré-visualização (HTML)
-    with st.expander("Pré-visualização", expanded=False):
-        st.components.v1.html(html, height=700, scrolling=True)
+    with st.expander("Pré-visualização", expanded=True):
+        st.components.v1.html(html, height=900, scrolling=True)
 
     # Gerar PDF
     # if st.button("Gerar PDF", type="primary"):
@@ -292,11 +292,12 @@ def render_export_view():
     #     else:
             # st.warning("Não foi possível converter automaticamente para PDF neste ambiente.")
     
+    st.write("---")
     st.download_button(
-            label="Baixar como HTML ",
+            label="  Baixar como HTML ",
             data=html,
+            use_container_width=True,
             file_name=f"agenda_{year}_{month:02d}.html",
             mime="text/html",
             type="primary")
             
-    st.info("Dica: Abra o HTML baixado no navegador e use Imprimir > Salvar como PDF (paisagem).")
