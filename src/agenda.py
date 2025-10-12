@@ -12,24 +12,38 @@ st.session_state.df_usuarios = df_usuarios
 df_motorista = get_dados_motorista()
 st.session_state.df_motoristas = df_motorista
 
-COLOR_MAPPING = {
-    'feriado': '#006414',
-    # Campanhas de conscientização
-    'maio laranja': '#fd7e14',      # Maio Laranja – combate ao abuso sexual infantil
-    'junho violeta': '#8b00ff',   # Junho Violeta – combate à violência contra idosos
-    'junho da diversidade': '#ff0000',  # Junho da Diversidade – vermelho (início arco-íris)
-    'agosto lilás': '#c79fef',      # Agosto Lilás – combate à violência doméstica
+# Paleta de cores disponíveis para eventos
+# Paleta de seleção (nome -> colorId do Google)
+COLOR_SELECT_TO_ID = {
+    'Lavanda': '1',
+    'Sálvia (Verde Claro)': '2',
+    'Roxo (Grape)': '3',
+    'Coral (Flamingo)': '4',
+    'Amarelo (Banana)': '5',
+    'Laranja (Tangerine)': '6',
+    'Azul (Peacock)': '7',
+    'Cinza (Graphite)': '8',
+    'Azul (Blueberry)': '9',
+    'Verde (Basil)': '10',
+    'Vermelho (Tomato)': '11',
 }
 
-# Mapeamento para colorId do Google Calendar (aproximações)
-COLOR_ID_MAPPING = {
-    'feriado': '10',                # verde
-    # Campanhas de conscientização
-    'maio laranja': '6',            # laranja
-    'junho violeta': '3',           # roxo/violeta (mais próximo disponível)
-    'junho da diversidade': '11',   # vermelho (início arco-íris)
-    'agosto lilás': '1',            # lavanda/lilás (mais próximo disponível)
+# Para preview visual no formulário (colorId -> hex aproximado oficial)
+GOOGLE_EVENT_COLORS = {
+    "1":  {"name": "Lavender",      "hex": "#7986CB"},
+    "2":  {"name": "Sage",          "hex": "#33B679"},
+    "3":  {"name": "Grape",         "hex": "#8E24AA"},
+    "4":  {"name": "Flamingo",      "hex": "#E67C73"},
+    "5":  {"name": "Banana",        "hex": "#F6BF26"},
+    "6":  {"name": "Tangerine",     "hex": "#F4511E"},
+    "7":  {"name": "Peacock",       "hex": "#039BE5"},
+    "8":  {"name": "Graphite",      "hex": "#616161"},
+    "9":  {"name": "Blueberry",     "hex": "#3F51B5"},
+    "10": {"name": "Basil",         "hex": "#0B8043"},
+    "11": {"name": "Tomato",        "hex": "#D50000"},
 }
+DEFAULT_COLOR_ID = None  # usa a cor padrão do calendário
+DEFAULT_COLOR_HEX = "#3064ad"  # apenas para fallback visual
 
 DEFAULT_COLOR = '#3064ad'
 SALA_LOCATION = "Palácio República dos Palmares, R. Cincinato Pinto, s/n - Centro, Maceió - AL, 57020-050, Brasil"
@@ -39,13 +53,21 @@ END_HOUR = 20
 
 # ==================== FUNÇÕES AUXILIARES ====================
 
-def get_event_color(title):
-    """Determina a cor do evento baseado no título."""
-    title_lower = title.lower()
-    for keyword, color in COLOR_MAPPING.items():
-        if keyword in title_lower:
-            return color
-    return DEFAULT_COLOR
+def get_event_color(event):
+    """Determina a cor do evento pela colorId do Google (se houver) ou fallback visual."""
+    # 1) Se vier colorId do Google no evento (top-level ou em extendedProps), usa o hex correspondente para a UI
+    color_id = event.get('colorId') or event.get('extendedProps', {}).get('colorId')
+    if color_id and str(color_id) in GOOGLE_EVENT_COLORS:
+        return GOOGLE_EVENT_COLORS[str(color_id)]['hex']
+    
+    # 2) Fallback: se ainda houver custom_color antigo em extendedProps (migração), use-o
+    extended_props = event.get('extendedProps', {})
+    custom_color = extended_props.get('custom_color')
+    if custom_color:
+        return custom_color
+    
+    # 3) Cor padrão visual
+    return DEFAULT_COLOR_HEX
 
 # Novo: obtém colorId para Google Calendar
 def get_event_color_id(title):
@@ -141,7 +163,7 @@ def format_event_for_calendar(event):
         'location': event.get('location', ''),
         'start': start_date,
         'end': end_date,
-        'backgroundColor': get_event_color(title),
+        'backgroundColor': get_event_color(event), # <--- AQUI: Usa a nova função get_event_color
         'textColor': '#ffffff',
         'allDay': event.get('allDay', start_time is None),
         'extendedProps': extended_props
@@ -510,6 +532,37 @@ def show_create_event_form():
             title = st.text_input("🏷️ Nome do Evento*", key="custom_title", placeholder="Ex: Reunião de Planejamento")
             description_base = st.text_area("📄 Descrição", placeholder="Descreva os detalhes do evento")
 
+            # 2.5) Seletor de Cor
+            # 2.5) Seletor de Cor (via colorId do Google)
+            col_color, col_preview = st.columns([1, 1])
+            with col_color:
+                color_names = list(COLOR_SELECT_TO_ID.keys())
+                selected_color_name = st.selectbox(
+                    "🎨 Cor do Evento",
+                    options=color_names,
+                    index=0,
+                    key="event_color_selector"
+                )
+                selected_color_id = COLOR_SELECT_TO_ID[selected_color_name]
+                selected_hex = GOOGLE_EVENT_COLORS.get(selected_color_id, {}).get("hex", DEFAULT_COLOR_HEX)
+
+            with col_preview:
+                st.markdown(
+                    f"""
+                    <div style="margin-top: 28px;">
+                        <div style="
+                            background-color: {selected_hex};
+                            width: 100%;
+                            height: 40px;
+                            border-radius: 8px;
+                            border: 2px solid #ddd;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        "></div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
             # 3) Widgets de horários (caso não seja dia inteiro)
             if not all_day:
                 available_times = get_available_times(start_date)
@@ -621,7 +674,7 @@ def show_create_event_form():
                 'start_time': start_time_str if not all_day else None,
                 'end_time': end_time_str if not all_day else None,
                 'all_day': all_day,
-                'color_id': get_event_color_id(title),
+                'colorId': selected_color_id,  # Adicionar cor customizada
             }
             
             # Criar evento(s)
@@ -652,7 +705,7 @@ def show_create_event_form():
                     for key in ['show_create_event', 'selected_date', 'selected_end_date',
                                 'agenda_start_time_str', 'agenda_end_time_str',
                                 'custom_start_time_str', 'custom_end_time_str',
-                                'participantes_emails', 'participantes_nomes']:
+                                'participantes_emails', 'participantes_nomes', 'event_color_selector']:
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
@@ -665,30 +718,6 @@ def show_create_event_form():
                     
                     mensagem.toast("Criando evento...", duration="short")
                     time.sleep(1)
-
-                    # ----------------  E-MAIL TEMPORARIAMENTE DESATIVADO!!!! -----------------------
-                    # Enviar e-mail aos participantes antes da confirmação de sucesso
-                    # try:
-                    #     equipe_nomes = st.session_state.get("custom_equipe", [])
-                    #     motorista_nome = st.session_state.get("custom_motorista")
-                    #     df_usuarios_local = st.session_state.get("df_usuarios")
-                    #     send_ok = send_event_email_for_event(
-                    #         event_data=event_data,
-                    #         equipe_nomes=equipe_nomes or [],
-                    #         motorista=motorista_nome,
-                    #         df_usuarios=df_usuarios_local,
-                    #         created_event=created_event,
-                    #     )
-                    #     if send_ok:
-                    #         mensagem.toast("📧 E-mail enviado aos participantes.", duration="short")
-                    #         print(f"[EMAIL] E-mail enviado aos participantes.")
-                    #     else:
-                    #         mensagem.toast("⚠️ Não foi possível enviar e-mail aos participantes.", duration="short")
-                    #         print(f"[EMAIL] Não foi possível enviar e-mail aos participantes.")
-                    # except Exception as e:
-                    #     mensagem.toast(f"⚠️ Erro ao enviar e-mail: {e}", duration="short")
-                    #     print(f"[EMAIL] Erro ao enviar e-mail: {e}")
-                    # ----------------  E-MAIL TEMPORARIAMENTE DESATIVADO!!!! -----------------------
                     
                     st.session_state.google_calendar_loaded = False
                     if 'calendar_events' in st.session_state:
@@ -700,13 +729,12 @@ def show_create_event_form():
                                 'agenda_start_time_str', 'agenda_end_time_str',
                                 'custom_start_time_str', 'custom_end_time_str',
                                 'absence_start_time_str', 'absence_end_time_str',
-                                'participantes_emails', 'participantes_nomes']:
+                                'participantes_emails', 'participantes_nomes', 'event_color_selector']:
                         if key in st.session_state:
                             del st.session_state[key]
 
                     mensagem.toast("✅ Evento Criado com Sucesso!", duration="short")
 
-                    # aqui deverá chamar a função que envia o e-mail.
                     time.sleep(0.5)
                     st.rerun()
                 else:
@@ -720,12 +748,12 @@ def show_create_event_form():
             for key in ['selected_date', 'selected_end_date',
                         'agenda_start_time_str', 'agenda_end_time_str',
                         'custom_start_time_str', 'custom_end_time_str',
-                        'participantes_emails', 'participantes_nomes']:
+                        'participantes_emails', 'participantes_nomes', 'event_color_selector']:
                 if key in st.session_state:
                     del st.session_state[key]
 
             time.sleep(1)
-            mensagem.toast("❌ Opreação cancelada!", duration="short")
+            mensagem.toast("❌ Operação cancelada!", duration="short")
             time.sleep(0.5)
             st.rerun()
 

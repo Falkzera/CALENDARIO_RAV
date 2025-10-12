@@ -22,9 +22,10 @@ def create_calendar_event(event_data, calendar_id='ravsistema@gmail.com'):
         }
         
         # aplicar colorId se fornecido
-        color_id = event_data.get('color_id')
+# aplicar colorId se fornecido
+        color_id = event_data.get('colorId') or event_data.get('color_id')  # aceita ambos, por segurança
         if color_id:
-            event['colorId'] = color_id
+            event['colorId'] = str(color_id)  # garantir string
         
         start_date = event_data.get('start_date')
         end_date = event_data.get('end_date', start_date)
@@ -83,9 +84,10 @@ def update_calendar_event(event_id, event_data, calendar_id='ravsistema@gmail.co
             current_event['location'] = event_data['location']
         
         # aplicar colorId se fornecido
-        color_id = event_data.get('color_id')
+# aplicar colorId se fornecido
+        color_id = event_data.get('colorId') or event_data.get('color_id')
         if color_id:
-            current_event['colorId'] = color_id
+            current_event['colorId'] = str(color_id)
         
         if 'start_date' in event_data:
             start_date = event_data['start_date']
@@ -227,7 +229,8 @@ def get_calendar_events(calendar_id='ravsistema@gmail.com', max_results=2500, mo
                     'creator': event.get('creator', {}).get('email', ''),
                     'organizer': event.get('organizer', {}).get('email', ''),
                     'status': event.get('status', ''),
-                    'html_link': event.get('htmlLink', '')
+                    'html_link': event.get('htmlLink', ''),
+                    'colorId': event.get('colorId', '')
                 }
             }
             
