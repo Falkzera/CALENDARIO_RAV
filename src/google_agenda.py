@@ -296,3 +296,60 @@ def normalize_html_description(description, for_html_display=True):
         description = description.replace('\n', '<br>')
     
     return description
+
+def get_holidays_from_google(calendar_id='pt.brazilian#holiday@group.v.calendar.google.com', months_back=6):
+    """
+    Busca feriados do calendário público de feriados do Google.
+    
+    Args:
+        calendar_id (str): ID do calendário de feriados (padrão: feriados brasileiros)
+        months_back (int): Quantos meses no passado buscar (padrão: 6)
+    
+    Returns:
+        list: Lista de feriados formatados
+    """
+    try:
+        service = get_calendar_service()
+        
+        now = datetime.now(timezone.utc)
+        start_date = now - timedelta(days=months_back * 30)
+        time_min = start_date.replace(microsecond=0).isoformat()
+        
+        # Buscar eventos do calendário de feriados
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            maxResults=100,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        formatted_holidays = []
+        
+        for event in events:
+            title = event.get('summary', 'Feriado')
+            start_date = event['start'].get('date', event['start'].get('dateTime', '').split('T')[0])
+            
+            formatted_holiday = {
+                'title': f"🎉 {title}",  # Emoji para identificar feriados
+                'start': start_date,
+                'end': start_date,
+                'description': f"Feriado: {title}",
+                'allDay': True,
+                'extendedProps': {
+                    'google_event_id': event.get('id', ''),
+                    'google_calendar_id': calendar_id,
+                    'is_holiday': True,  # Flag para identificar feriados
+                    'colorId': '10'  ##### PERSONALIZAR AQUI
+                }
+            }
+            
+            formatted_holidays.append(formatted_holiday)
+        
+        return formatted_holidays
+        
+    except Exception as e:
+        print(f"[DEBUG] Erro ao buscar feriados: {str(e)}")
+        return []

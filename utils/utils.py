@@ -60,6 +60,9 @@ def menu_navegacao_sidebar():
     # Botão para página de KPIs
     if st.sidebar.button("Resumo Mensal", key="btn_exportar", use_container_width=True, type='primary'):
         st.switch_page("pages/2_exportar.py")
+    
+    # if st.sidebar.button("Configurações", key="btn_configuracoes", use_container_width=True, type='primary'):
+    #     st.switch_page("pages/3_configuracoes.py")
 
     st.sidebar.markdown("---")
 

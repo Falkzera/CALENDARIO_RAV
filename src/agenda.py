@@ -1,7 +1,7 @@
 import time
 import streamlit as st
 from datetime import datetime, timedelta
-from src.google_agenda import get_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, normalize_html_description
+from src.google_agenda import get_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, normalize_html_description, get_holidays_from_google
 from utils.utils import titulos_pagina
 from streamlit_calendar import calendar
 from src.google_sheets import get_dados_usuarios, get_dados_motorista
@@ -770,12 +770,21 @@ def func_agenda_rav():
         st.session_state.google_calendar_loaded = False
     
     # Carregar eventos do Google Calendar (apenas uma vez)
+
     if not st.session_state.google_calendar_loaded:
         try:
             with st.status("Carregando eventos do Google Calendar...", expanded=False):
+                # Eventos normais
                 api_events = get_calendar_events(months_back=12)
                 if api_events:
                     st.session_state.calendar_events.extend(api_events)
+                
+                # Feriados
+                holidays = get_holidays_from_google(months_back=12)
+                if holidays:
+                    st.session_state.calendar_events.extend(holidays)
+                    st.toast(f"✅ {len(holidays)} feriados carregados!", duration="short")
+            
             st.session_state.google_calendar_loaded = True
         except Exception as e:
             st.error(f"Erro ao carregar eventos: {e}")
