@@ -78,15 +78,15 @@ def menu_navegacao_sidebar():
 
 def img_pag_icon():
     """Retorna o caminho do ícone de página do governo."""
-    # Preferir arquivo servido via pasta static para evitar MediaFileStorageError
-    return 'static/rav.png'
+    # Preferir arquivo servido via pasta assets/image para evitar MediaFileStorageError
+    return 'assets/image/rav.png'
 
 def imagem_topo():
     """
     Exibe o logo de ALAGOAS e um separador visual na barra lateral.
     """
     try:
-        st.sidebar.image("static/rav.png")
+        st.sidebar.image("assets/image/rav.png")
     except Exception:
         st.sidebar.image("assets/image/rav.png")
     st.sidebar.caption('---')

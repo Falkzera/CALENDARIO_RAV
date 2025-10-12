@@ -575,15 +575,14 @@ def show_create_event_form():
                 equipe_selecionada = st.multiselect("👥 Equipe (participantes)", options=equipe_opcoes, key="custom_equipe", placeholder="Selecione os participantes")
 
             with col_e2:
-                motoristas_opcoes = [n for n in st.session_state.df_motoristas["NOME"] if str(n).strip()]
-                motorista = st.selectbox("🚗 Motorista", options=motoristas_opcoes if motoristas_opcoes else ["Sem motoristas disponíveis"],index=None, key="custom_motorista", placeholder="Selecione o motorista")
+                motorista = st.text_input("🚗 Motorista", key="custom_motorista", placeholder="Digite o nome do motorista")
 
             # 5) Localização
             location = st.text_input("📍 Localização", value="", placeholder="Endereço ou local do evento")
 
             # Montar descrição incluindo Equipe e Motorista
             equipe_str = "\n".join([f"• {n}" for n in equipe_selecionada]) if equipe_selecionada else "—"
-            motorista_str = motorista if motoristas_opcoes else "—"
+            motorista_str = motorista if motorista else "—"
             description = (description_base or "").strip()
             description += "\n\n👥 Equipe:\n" + (equipe_str if equipe_selecionada else "—")
             description += f"\n\n🚗 Motorista:\n" + (motorista_str if motorista_str else "—")
