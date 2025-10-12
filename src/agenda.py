@@ -1,7 +1,7 @@
 import time
 import streamlit as st
 from datetime import datetime, timedelta
-from src.google_agenda import get_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, normalize_html_description
+from src.google_agenda import get_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, normalize_html_description, get_holidays_from_google
 from utils.utils import titulos_pagina
 from streamlit_calendar import calendar
 from src.google_sheets import get_dados_usuarios, get_dados_motorista
@@ -12,24 +12,38 @@ st.session_state.df_usuarios = df_usuarios
 df_motorista = get_dados_motorista()
 st.session_state.df_motoristas = df_motorista
 
-COLOR_MAPPING = {
-    'feriado': '#006414',
-    # Campanhas de conscientização
-    'maio laranja': '#fd7e14',      # Maio Laranja – combate ao abuso sexual infantil
-    'junho violeta': '#8b00ff',   # Junho Violeta – combate à violência contra idosos
-    'junho da diversidade': '#ff0000',  # Junho da Diversidade – vermelho (início arco-íris)
-    'agosto lilás': '#c79fef',      # Agosto Lilás – combate à violência doméstica
+# Paleta de cores disponíveis para eventos
+# Paleta de seleção (nome -> colorId do Google)
+COLOR_SELECT_TO_ID = {
+    'Lavanda': '1',
+    'Sálvia (Verde Claro)': '2',
+    'Roxo (Grape)': '3',
+    'Coral (Flamingo)': '4',
+    'Amarelo (Banana)': '5',
+    'Laranja (Tangerine)': '6',
+    'Azul (Peacock)': '7',
+    'Cinza (Graphite)': '8',
+    'Azul (Blueberry)': '9',
+    'Verde (Basil)': '10',
+    'Vermelho (Tomato)': '11',
 }
 
-# Mapeamento para colorId do Google Calendar (aproximações)
-COLOR_ID_MAPPING = {
-    'feriado': '10',                # verde
-    # Campanhas de conscientização
-    'maio laranja': '6',            # laranja
-    'junho violeta': '3',           # roxo/violeta (mais próximo disponível)
-    'junho da diversidade': '11',   # vermelho (início arco-íris)
-    'agosto lilás': '1',            # lavanda/lilás (mais próximo disponível)
+# Para preview visual no formulário (colorId -> hex aproximado oficial)
+GOOGLE_EVENT_COLORS = {
+    "1":  {"name": "Lavender",      "hex": "#7986CB"},
+    "2":  {"name": "Sage",          "hex": "#33B679"},
+    "3":  {"name": "Grape",         "hex": "#8E24AA"},
+    "4":  {"name": "Flamingo",      "hex": "#E67C73"},
+    "5":  {"name": "Banana",        "hex": "#F6BF26"},
+    "6":  {"name": "Tangerine",     "hex": "#F4511E"},
+    "7":  {"name": "Peacock",       "hex": "#039BE5"},
+    "8":  {"name": "Graphite",      "hex": "#616161"},
+    "9":  {"name": "Blueberry",     "hex": "#3F51B5"},
+    "10": {"name": "Basil",         "hex": "#0B8043"},
+    "11": {"name": "Tomato",        "hex": "#D50000"},
 }
+DEFAULT_COLOR_ID = None  # usa a cor padrão do calendário
+DEFAULT_COLOR_HEX = "#3064ad"  # apenas para fallback visual
 
 DEFAULT_COLOR = '#3064ad'
 SALA_LOCATION = "Palácio República dos Palmares, R. Cincinato Pinto, s/n - Centro, Maceió - AL, 57020-050, Brasil"
@@ -39,13 +53,21 @@ END_HOUR = 20
 
 # ==================== FUNÇÕES AUXILIARES ====================
 
-def get_event_color(title):
-    """Determina a cor do evento baseado no título."""
-    title_lower = title.lower()
-    for keyword, color in COLOR_MAPPING.items():
-        if keyword in title_lower:
-            return color
-    return DEFAULT_COLOR
+def get_event_color(event):
+    """Determina a cor do evento pela colorId do Google (se houver) ou fallback visual."""
+    # 1) Se vier colorId do Google no evento (top-level ou em extendedProps), usa o hex correspondente para a UI
+    color_id = event.get('colorId') or event.get('extendedProps', {}).get('colorId')
+    if color_id and str(color_id) in GOOGLE_EVENT_COLORS:
+        return GOOGLE_EVENT_COLORS[str(color_id)]['hex']
+    
+    # 2) Fallback: se ainda houver custom_color antigo em extendedProps (migração), use-o
+    extended_props = event.get('extendedProps', {})
+    custom_color = extended_props.get('custom_color')
+    if custom_color:
+        return custom_color
+    
+    # 3) Cor padrão visual
+    return DEFAULT_COLOR_HEX
 
 # Novo: obtém colorId para Google Calendar
 def get_event_color_id(title):
@@ -66,30 +88,24 @@ def generate_time_options():
     return times
 
 def get_available_times(selected_date):
-    """Retorna horários disponíveis para a data selecionada."""
+    """Retorna horários disponíveis para a data selecionada (permite passado e horários já passados de hoje)."""
     all_times = generate_time_options()
-    
+
     if isinstance(selected_date, str):
         selected_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
-    
-    current_datetime = datetime.now()
-    
-    # Data passada
-    if selected_date < current_datetime.date():
-        return []
-    
-    # Data futura
-    if selected_date > current_datetime.date():
+
+    current_date = datetime.now().date()
+
+    # Data passada → permitir todos os horários
+    if selected_date < current_date:
         return all_times
-    
-    # Hoje - filtrar horários futuros com margem de 15 min
-    future_times = []
-    current_plus_margin = (current_datetime + timedelta(minutes=15)).time()
-    for time_str in all_times:
-        time_obj = datetime.strptime(time_str, "%H:%M").time()
-        if time_obj >= current_plus_margin:
-            future_times.append(time_str)
-    return future_times
+
+    # Data futura → todos os horários
+    if selected_date > current_date:
+        return all_times
+
+    # Hoje → todos os horários (inclusive os que já passaram)
+    return all_times
 
 def validate_time_selection(start_date, start_time_str, end_date, end_time_str):
     """Valida se os horários selecionados são válidos."""
@@ -101,13 +117,14 @@ def validate_time_selection(start_date, start_time_str, end_date, end_time_str):
     start_datetime = datetime.combine(start_date, datetime.strptime(start_time_str, "%H:%M").time())
     end_datetime = datetime.combine(end_date, datetime.strptime(end_time_str, "%H:%M").time())
     
-    if start_datetime <= datetime.now():
-        return False, "❌ Não é possível agendar eventos no passado!"
-    
     if end_datetime <= start_datetime:
         return False, "❌ O horário de fim deve ser posterior ao horário de início!"
-    
-    return True, ""
+
+    warning = ""
+    if start_datetime <= datetime.now():
+        warning = "⚠️ ⏳ Viajante do tempo? Agendar no passado é um truque e tanto! 😉"
+        
+    return True, warning
 
 def is_event_in_past(event):
     """Verifica se um evento já passou."""
@@ -146,7 +163,7 @@ def format_event_for_calendar(event):
         'location': event.get('location', ''),
         'start': start_date,
         'end': end_date,
-        'backgroundColor': get_event_color(title),
+        'backgroundColor': get_event_color(event), # <--- AQUI: Usa a nova função get_event_color
         'textColor': '#ffffff',
         'allDay': event.get('allDay', start_time is None),
         'extendedProps': extended_props
@@ -464,33 +481,34 @@ def show_event_details(event):
     st.write("---")
     
     # Botões de ação (apenas para eventos futuros)
-    if not is_event_in_past(event):
-        col_edit, col_delete = st.columns(2)
-        with col_edit:
-            if st.button("✏️ Editar Evento", key=f"edit_{event.get('id', 'unknown')}", type='primary', use_container_width=True):
-                st.session_state.show_edit_event = True
-                st.session_state.selected_event = event
-                st.rerun()
-        
-        with col_delete:
-            with st.popover("🗑️ Deletar Evento", use_container_width=True):
-                st.write("⚠️ Tem certeza de que deseja DELETAR este evento?")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("Sim", key=f"confirm_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
-                        google_event_id = event.get('extendedProps', {}).get('google_event_id')
-                        if google_event_id and delete_calendar_event(google_event_id):
-                            st.success("✅ Evento deletado com sucesso!")
-                            st.session_state.calendar_events = [
-                                e for e in st.session_state.calendar_events
-                                if e.get('extendedProps', {}).get('google_event_id') != google_event_id
-                            ]
-                            st.rerun()
-                        else:
-                            st.error("❌ Erro ao deletar evento")
-                with col2:
-                    if st.button("Não", key=f"cancel_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
-                        pass
+    # if not is_event_in_past(event):
+
+    col_edit, col_delete = st.columns(2)
+    with col_edit:
+        if st.button("✏️ Editar Evento", key=f"edit_{event.get('id', 'unknown')}", type='primary', use_container_width=True):
+            st.session_state.show_edit_event = True
+            st.session_state.selected_event = event
+            st.rerun()
+    
+    with col_delete:
+        with st.popover("🗑️ Deletar Evento", use_container_width=True):
+            st.write("⚠️ Tem certeza de que deseja DELETAR este evento?")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Sim", key=f"confirm_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
+                    google_event_id = event.get('extendedProps', {}).get('google_event_id')
+                    if google_event_id and delete_calendar_event(google_event_id):
+                        st.success("✅ Evento deletado com sucesso!")
+                        st.session_state.calendar_events = [
+                            e for e in st.session_state.calendar_events
+                            if e.get('extendedProps', {}).get('google_event_id') != google_event_id
+                        ]
+                        st.rerun()
+                    else:
+                        st.error("❌ Erro ao deletar evento")
+            with col2:
+                if st.button("Não", key=f"cancel_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
+                    pass
 
 @st.dialog("➕", width="large", dismissible=False)
 def show_create_event_form():
@@ -513,6 +531,37 @@ def show_create_event_form():
             # 2) Nome do Evento e Descrição
             title = st.text_input("🏷️ Nome do Evento*", key="custom_title", placeholder="Ex: Reunião de Planejamento")
             description_base = st.text_area("📄 Descrição", placeholder="Descreva os detalhes do evento")
+
+            # 2.5) Seletor de Cor
+            # 2.5) Seletor de Cor (via colorId do Google)
+            col_color, col_preview = st.columns([1, 1])
+            with col_color:
+                color_names = list(COLOR_SELECT_TO_ID.keys())
+                selected_color_name = st.selectbox(
+                    "🎨 Cor do Evento",
+                    options=color_names,
+                    index=0,
+                    key="event_color_selector"
+                )
+                selected_color_id = COLOR_SELECT_TO_ID[selected_color_name]
+                selected_hex = GOOGLE_EVENT_COLORS.get(selected_color_id, {}).get("hex", DEFAULT_COLOR_HEX)
+
+            with col_preview:
+                st.markdown(
+                    f"""
+                    <div style="margin-top: 28px;">
+                        <div style="
+                            background-color: {selected_hex};
+                            width: 100%;
+                            height: 40px;
+                            border-radius: 8px;
+                            border: 2px solid #ddd;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        "></div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
             # 3) Widgets de horários (caso não seja dia inteiro)
             if not all_day:
@@ -575,15 +624,14 @@ def show_create_event_form():
                 equipe_selecionada = st.multiselect("👥 Equipe (participantes)", options=equipe_opcoes, key="custom_equipe", placeholder="Selecione os participantes")
 
             with col_e2:
-                motoristas_opcoes = [n for n in st.session_state.df_motoristas["NOME"] if str(n).strip()]
-                motorista = st.selectbox("🚗 Motorista", options=motoristas_opcoes if motoristas_opcoes else ["Sem motoristas disponíveis"],index=None, key="custom_motorista", placeholder="Selecione o motorista")
+                motorista = st.text_input("🚗 Motorista", key="custom_motorista", placeholder="Digite o nome do motorista")
 
             # 5) Localização
             location = st.text_input("📍 Localização", value="", placeholder="Endereço ou local do evento")
 
             # Montar descrição incluindo Equipe e Motorista
             equipe_str = "\n".join([f"• {n}" for n in equipe_selecionada]) if equipe_selecionada else "—"
-            motorista_str = motorista if motoristas_opcoes else "—"
+            motorista_str = motorista if motorista else "—"
             description = (description_base or "").strip()
             description += "\n\n👥 Equipe:\n" + (equipe_str if equipe_selecionada else "—")
             description += f"\n\n🚗 Motorista:\n" + (motorista_str if motorista_str else "—")
@@ -607,11 +655,14 @@ def show_create_event_form():
             
             # Validar horários
             if not all_day:
-                is_valid, error_message = validate_time_selection(start_date, start_time_str, end_date, end_time_str)
+                is_valid, message = validate_time_selection(start_date, start_time_str, end_date, end_time_str)
                 
                 if not is_valid:
-                    st.error(error_message)
+                    st.error(message)
                     return
+                
+                if message:
+                    st.toast(message, duration="short")
             
             # Dados base do evento
             event_data = {
@@ -623,7 +674,7 @@ def show_create_event_form():
                 'start_time': start_time_str if not all_day else None,
                 'end_time': end_time_str if not all_day else None,
                 'all_day': all_day,
-                'color_id': get_event_color_id(title),
+                'colorId': selected_color_id,  # Adicionar cor customizada
             }
             
             # Criar evento(s)
@@ -654,7 +705,7 @@ def show_create_event_form():
                     for key in ['show_create_event', 'selected_date', 'selected_end_date',
                                 'agenda_start_time_str', 'agenda_end_time_str',
                                 'custom_start_time_str', 'custom_end_time_str',
-                                'participantes_emails', 'participantes_nomes']:
+                                'participantes_emails', 'participantes_nomes', 'event_color_selector']:
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
@@ -667,30 +718,6 @@ def show_create_event_form():
                     
                     mensagem.toast("Criando evento...", duration="short")
                     time.sleep(1)
-
-                    # ----------------  E-MAIL TEMPORARIAMENTE DESATIVADO!!!! -----------------------
-                    # Enviar e-mail aos participantes antes da confirmação de sucesso
-                    # try:
-                    #     equipe_nomes = st.session_state.get("custom_equipe", [])
-                    #     motorista_nome = st.session_state.get("custom_motorista")
-                    #     df_usuarios_local = st.session_state.get("df_usuarios")
-                    #     send_ok = send_event_email_for_event(
-                    #         event_data=event_data,
-                    #         equipe_nomes=equipe_nomes or [],
-                    #         motorista=motorista_nome,
-                    #         df_usuarios=df_usuarios_local,
-                    #         created_event=created_event,
-                    #     )
-                    #     if send_ok:
-                    #         mensagem.toast("📧 E-mail enviado aos participantes.", duration="short")
-                    #         print(f"[EMAIL] E-mail enviado aos participantes.")
-                    #     else:
-                    #         mensagem.toast("⚠️ Não foi possível enviar e-mail aos participantes.", duration="short")
-                    #         print(f"[EMAIL] Não foi possível enviar e-mail aos participantes.")
-                    # except Exception as e:
-                    #     mensagem.toast(f"⚠️ Erro ao enviar e-mail: {e}", duration="short")
-                    #     print(f"[EMAIL] Erro ao enviar e-mail: {e}")
-                    # ----------------  E-MAIL TEMPORARIAMENTE DESATIVADO!!!! -----------------------
                     
                     st.session_state.google_calendar_loaded = False
                     if 'calendar_events' in st.session_state:
@@ -702,13 +729,12 @@ def show_create_event_form():
                                 'agenda_start_time_str', 'agenda_end_time_str',
                                 'custom_start_time_str', 'custom_end_time_str',
                                 'absence_start_time_str', 'absence_end_time_str',
-                                'participantes_emails', 'participantes_nomes']:
+                                'participantes_emails', 'participantes_nomes', 'event_color_selector']:
                         if key in st.session_state:
                             del st.session_state[key]
 
                     mensagem.toast("✅ Evento Criado com Sucesso!", duration="short")
 
-                    # aqui deverá chamar a função que envia o e-mail.
                     time.sleep(0.5)
                     st.rerun()
                 else:
@@ -722,12 +748,12 @@ def show_create_event_form():
             for key in ['selected_date', 'selected_end_date',
                         'agenda_start_time_str', 'agenda_end_time_str',
                         'custom_start_time_str', 'custom_end_time_str',
-                        'participantes_emails', 'participantes_nomes']:
+                        'participantes_emails', 'participantes_nomes', 'event_color_selector']:
                 if key in st.session_state:
                     del st.session_state[key]
 
             time.sleep(1)
-            mensagem.toast("❌ Opreação cancelada!", duration="short")
+            mensagem.toast("❌ Operação cancelada!", duration="short")
             time.sleep(0.5)
             st.rerun()
 
@@ -744,12 +770,21 @@ def func_agenda_rav():
         st.session_state.google_calendar_loaded = False
     
     # Carregar eventos do Google Calendar (apenas uma vez)
+
     if not st.session_state.google_calendar_loaded:
         try:
             with st.status("Carregando eventos do Google Calendar...", expanded=False):
+                # Eventos normais
                 api_events = get_calendar_events(months_back=12)
                 if api_events:
                     st.session_state.calendar_events.extend(api_events)
+                
+                # Feriados
+                holidays = get_holidays_from_google(months_back=12)
+                if holidays:
+                    st.session_state.calendar_events.extend(holidays)
+                    st.toast(f"✅ {len(holidays)} feriados carregados!", duration="short")
+            
             st.session_state.google_calendar_loaded = True
         except Exception as e:
             st.error(f"Erro ao carregar eventos: {e}")
@@ -774,20 +809,23 @@ def func_agenda_rav():
             clicked_date = datetime.fromisoformat(date_clicked.replace('Z', '+00:00')).date()
             current_datetime = datetime.now()
             
-            # Verificar se pode criar evento
-            can_create = False
-            if clicked_date > current_datetime.date():
-                can_create = True
-            elif clicked_date == current_datetime.date() and current_datetime.time().hour < 20:
-                can_create = True
+            st.write("---")
             
-            if can_create:
-                st.write("---")
-                data_formatada = datetime.fromisoformat(date_clicked.replace('Z', '+00:00')).strftime('%d/%m/%Y')
-                if st.button(f"➕ Criar Evento para: {data_formatada}", key=f"create_event_{date_clicked}", type="primary", use_container_width=True):
-                    st.session_state.selected_date = date_clicked.split('T')[0]
-                    st.session_state.show_create_event = True
-                    st.rerun()
+            # Aviso se for data passada
+            if clicked_date < current_datetime.date():
+                st.toast(f"Data passada selecionada: {clicked_date.strftime('%d/%m/%Y')}", duration="short")
+            
+            if clicked_date > current_datetime.date():
+                st.toast(f"Data futura selecionada: {clicked_date.strftime('%d/%m/%Y')}", duration="short")
+            
+            if clicked_date == current_datetime.date():
+                st.toast(f"Data atual selecionada: {clicked_date.strftime('%d/%m/%Y')}", duration="short")
+            
+            data_formatada = clicked_date.strftime('%d/%m/%Y')
+            if st.button(f"➕ Criar Evento para: {data_formatada}", key=f"create_event_{date_clicked}", type="primary", use_container_width=True):
+                st.session_state.selected_date = date_clicked.split('T')[0]
+                st.session_state.show_create_event = True
+                st.rerun()
         
         elif callback == "eventClick":
             event = calendar_component["eventClick"]["event"]
