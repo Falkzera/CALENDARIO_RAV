@@ -22,9 +22,10 @@ def create_calendar_event(event_data, calendar_id='ravsistema@gmail.com'):
         }
         
         # aplicar colorId se fornecido
-        color_id = event_data.get('color_id')
+# aplicar colorId se fornecido
+        color_id = event_data.get('colorId') or event_data.get('color_id')  # aceita ambos, por segurança
         if color_id:
-            event['colorId'] = color_id
+            event['colorId'] = str(color_id)  # garantir string
         
         start_date = event_data.get('start_date')
         end_date = event_data.get('end_date', start_date)
@@ -83,9 +84,10 @@ def update_calendar_event(event_id, event_data, calendar_id='ravsistema@gmail.co
             current_event['location'] = event_data['location']
         
         # aplicar colorId se fornecido
-        color_id = event_data.get('color_id')
+# aplicar colorId se fornecido
+        color_id = event_data.get('colorId') or event_data.get('color_id')
         if color_id:
-            current_event['colorId'] = color_id
+            current_event['colorId'] = str(color_id)
         
         if 'start_date' in event_data:
             start_date = event_data['start_date']
@@ -227,7 +229,8 @@ def get_calendar_events(calendar_id='ravsistema@gmail.com', max_results=2500, mo
                     'creator': event.get('creator', {}).get('email', ''),
                     'organizer': event.get('organizer', {}).get('email', ''),
                     'status': event.get('status', ''),
-                    'html_link': event.get('htmlLink', '')
+                    'html_link': event.get('htmlLink', ''),
+                    'colorId': event.get('colorId', '')
                 }
             }
             
@@ -293,3 +296,60 @@ def normalize_html_description(description, for_html_display=True):
         description = description.replace('\n', '<br>')
     
     return description
+
+def get_holidays_from_google(calendar_id='pt.brazilian#holiday@group.v.calendar.google.com', months_back=6):
+    """
+    Busca feriados do calendário público de feriados do Google.
+    
+    Args:
+        calendar_id (str): ID do calendário de feriados (padrão: feriados brasileiros)
+        months_back (int): Quantos meses no passado buscar (padrão: 6)
+    
+    Returns:
+        list: Lista de feriados formatados
+    """
+    try:
+        service = get_calendar_service()
+        
+        now = datetime.now(timezone.utc)
+        start_date = now - timedelta(days=months_back * 30)
+        time_min = start_date.replace(microsecond=0).isoformat()
+        
+        # Buscar eventos do calendário de feriados
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            maxResults=100,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        formatted_holidays = []
+        
+        for event in events:
+            title = event.get('summary', 'Feriado')
+            start_date = event['start'].get('date', event['start'].get('dateTime', '').split('T')[0])
+            
+            formatted_holiday = {
+                'title': f"🎉 {title}",  # Emoji para identificar feriados
+                'start': start_date,
+                'end': start_date,
+                'description': f"Feriado: {title}",
+                'allDay': True,
+                'extendedProps': {
+                    'google_event_id': event.get('id', ''),
+                    'google_calendar_id': calendar_id,
+                    'is_holiday': True,  # Flag para identificar feriados
+                    'colorId': '10'  ##### PERSONALIZAR AQUI
+                }
+            }
+            
+            formatted_holidays.append(formatted_holiday)
+        
+        return formatted_holidays
+        
+    except Exception as e:
+        print(f"[DEBUG] Erro ao buscar feriados: {str(e)}")
+        return []
