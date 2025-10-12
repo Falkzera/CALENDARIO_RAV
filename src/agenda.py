@@ -66,30 +66,24 @@ def generate_time_options():
     return times
 
 def get_available_times(selected_date):
-    """Retorna horários disponíveis para a data selecionada."""
+    """Retorna horários disponíveis para a data selecionada (permite passado e horários já passados de hoje)."""
     all_times = generate_time_options()
-    
+
     if isinstance(selected_date, str):
         selected_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
-    
-    current_datetime = datetime.now()
-    
-    # Data passada
-    if selected_date < current_datetime.date():
-        return []
-    
-    # Data futura
-    if selected_date > current_datetime.date():
+
+    current_date = datetime.now().date()
+
+    # Data passada → permitir todos os horários
+    if selected_date < current_date:
         return all_times
-    
-    # Hoje - filtrar horários futuros com margem de 15 min
-    future_times = []
-    current_plus_margin = (current_datetime + timedelta(minutes=15)).time()
-    for time_str in all_times:
-        time_obj = datetime.strptime(time_str, "%H:%M").time()
-        if time_obj >= current_plus_margin:
-            future_times.append(time_str)
-    return future_times
+
+    # Data futura → todos os horários
+    if selected_date > current_date:
+        return all_times
+
+    # Hoje → todos os horários (inclusive os que já passaram)
+    return all_times
 
 def validate_time_selection(start_date, start_time_str, end_date, end_time_str):
     """Valida se os horários selecionados são válidos."""
@@ -101,13 +95,14 @@ def validate_time_selection(start_date, start_time_str, end_date, end_time_str):
     start_datetime = datetime.combine(start_date, datetime.strptime(start_time_str, "%H:%M").time())
     end_datetime = datetime.combine(end_date, datetime.strptime(end_time_str, "%H:%M").time())
     
-    if start_datetime <= datetime.now():
-        return False, "❌ Não é possível agendar eventos no passado!"
-    
     if end_datetime <= start_datetime:
         return False, "❌ O horário de fim deve ser posterior ao horário de início!"
-    
-    return True, ""
+
+    warning = ""
+    if start_datetime <= datetime.now():
+        warning = "⚠️ ⏳ Viajante do tempo? Agendar no passado é um truque e tanto! 😉"
+        
+    return True, warning
 
 def is_event_in_past(event):
     """Verifica se um evento já passou."""
@@ -464,33 +459,34 @@ def show_event_details(event):
     st.write("---")
     
     # Botões de ação (apenas para eventos futuros)
-    if not is_event_in_past(event):
-        col_edit, col_delete = st.columns(2)
-        with col_edit:
-            if st.button("✏️ Editar Evento", key=f"edit_{event.get('id', 'unknown')}", type='primary', use_container_width=True):
-                st.session_state.show_edit_event = True
-                st.session_state.selected_event = event
-                st.rerun()
-        
-        with col_delete:
-            with st.popover("🗑️ Deletar Evento", use_container_width=True):
-                st.write("⚠️ Tem certeza de que deseja DELETAR este evento?")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("Sim", key=f"confirm_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
-                        google_event_id = event.get('extendedProps', {}).get('google_event_id')
-                        if google_event_id and delete_calendar_event(google_event_id):
-                            st.success("✅ Evento deletado com sucesso!")
-                            st.session_state.calendar_events = [
-                                e for e in st.session_state.calendar_events
-                                if e.get('extendedProps', {}).get('google_event_id') != google_event_id
-                            ]
-                            st.rerun()
-                        else:
-                            st.error("❌ Erro ao deletar evento")
-                with col2:
-                    if st.button("Não", key=f"cancel_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
-                        pass
+    # if not is_event_in_past(event):
+
+    col_edit, col_delete = st.columns(2)
+    with col_edit:
+        if st.button("✏️ Editar Evento", key=f"edit_{event.get('id', 'unknown')}", type='primary', use_container_width=True):
+            st.session_state.show_edit_event = True
+            st.session_state.selected_event = event
+            st.rerun()
+    
+    with col_delete:
+        with st.popover("🗑️ Deletar Evento", use_container_width=True):
+            st.write("⚠️ Tem certeza de que deseja DELETAR este evento?")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Sim", key=f"confirm_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
+                    google_event_id = event.get('extendedProps', {}).get('google_event_id')
+                    if google_event_id and delete_calendar_event(google_event_id):
+                        st.success("✅ Evento deletado com sucesso!")
+                        st.session_state.calendar_events = [
+                            e for e in st.session_state.calendar_events
+                            if e.get('extendedProps', {}).get('google_event_id') != google_event_id
+                        ]
+                        st.rerun()
+                    else:
+                        st.error("❌ Erro ao deletar evento")
+            with col2:
+                if st.button("Não", key=f"cancel_delete_{event.get('id', 'unknown')}", type='secondary', use_container_width=True):
+                    pass
 
 @st.dialog("➕", width="large", dismissible=False)
 def show_create_event_form():
@@ -606,11 +602,14 @@ def show_create_event_form():
             
             # Validar horários
             if not all_day:
-                is_valid, error_message = validate_time_selection(start_date, start_time_str, end_date, end_time_str)
+                is_valid, message = validate_time_selection(start_date, start_time_str, end_date, end_time_str)
                 
                 if not is_valid:
-                    st.error(error_message)
+                    st.error(message)
                     return
+                
+                if message:
+                    st.toast(message, duration="short")
             
             # Dados base do evento
             event_data = {
@@ -773,20 +772,23 @@ def func_agenda_rav():
             clicked_date = datetime.fromisoformat(date_clicked.replace('Z', '+00:00')).date()
             current_datetime = datetime.now()
             
-            # Verificar se pode criar evento
-            can_create = False
-            if clicked_date > current_datetime.date():
-                can_create = True
-            elif clicked_date == current_datetime.date() and current_datetime.time().hour < 20:
-                can_create = True
+            st.write("---")
             
-            if can_create:
-                st.write("---")
-                data_formatada = datetime.fromisoformat(date_clicked.replace('Z', '+00:00')).strftime('%d/%m/%Y')
-                if st.button(f"➕ Criar Evento para: {data_formatada}", key=f"create_event_{date_clicked}", type="primary", use_container_width=True):
-                    st.session_state.selected_date = date_clicked.split('T')[0]
-                    st.session_state.show_create_event = True
-                    st.rerun()
+            # Aviso se for data passada
+            if clicked_date < current_datetime.date():
+                st.toast(f"Data passada selecionada: {clicked_date.strftime('%d/%m/%Y')}", duration="short")
+            
+            if clicked_date > current_datetime.date():
+                st.toast(f"Data futura selecionada: {clicked_date.strftime('%d/%m/%Y')}", duration="short")
+            
+            if clicked_date == current_datetime.date():
+                st.toast(f"Data atual selecionada: {clicked_date.strftime('%d/%m/%Y')}", duration="short")
+            
+            data_formatada = clicked_date.strftime('%d/%m/%Y')
+            if st.button(f"➕ Criar Evento para: {data_formatada}", key=f"create_event_{date_clicked}", type="primary", use_container_width=True):
+                st.session_state.selected_date = date_clicked.split('T')[0]
+                st.session_state.show_create_event = True
+                st.rerun()
         
         elif callback == "eventClick":
             event = calendar_component["eventClick"]["event"]
